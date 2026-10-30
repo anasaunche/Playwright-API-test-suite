@@ -5,6 +5,7 @@
 # Usage: scripts/start-toolshop.sh [path-to-practice-software-testing-checkout]
 # Mirrors the upstream project's own CI workflow (testsmith-io/practice-software-testing).
 set -euo pipefail
+trap 'echo "::error title=start-toolshop.sh::failed at line $LINENO: $BASH_COMMAND"' ERR
 
 APP_DIR="${1:-toolshop}"
 export SPRINT=sprint5
@@ -47,17 +48,23 @@ for i in $(seq 1 60); do
   sleep 5
 done
 
-# Smoke-check the authenticated API before handing over to the tests; surface the Laravel log
-# as a CI annotation when it is unhealthy.
-token=$(curl -sf -X POST http://localhost:8091/users/login -H 'Content-Type: application/json' \
-  --data '{"email":"customer@practicesoftwaretesting.com","password":"welcome01"}' | jq -r .access_token)
-me_status=$(curl -s -o /tmp/me.json -w '%{http_code}' -H "Authorization: Bearer $token" http://localhost:8091/users/me)
-if [ "$me_status" != "200" ]; then
-  log=$(docker compose exec -T laravel-api sh -c 'tail -n 40 storage/logs/laravel*.log' 2>&1 | cut -c1-300)
-  msg="GET /users/me returned $me_status: $(head -c 300 /tmp/me.json)"$'\n'"$log"
+# Smoke-check the authenticated API before handing over to the tests and surface the Laravel
+# log as a CI annotation when it is unhealthy. Never aborts the script.
+smoke_check() {
+  local login me
+  login=$(curl -s -w ' HTTP%{http_code}' -X POST http://localhost:8091/users/login \
+    -H 'Content-Type: application/json' \
+    --data '{"email":"customer@practicesoftwaretesting.com","password":"welcome01"}')
+  token=$(sed -E 's/.*"access_token":"([^"]+)".*/\1/' <<<"$login")
+  me=$(curl -s -w ' HTTP%{http_code}' -H "Authorization: Bearer $token" http://localhost:8091/users/me)
+  case "$me" in *HTTP200) echo "API smoke check passed"; return ;; esac
+  local log msg
+  log=$(docker compose exec -T laravel-api sh -c 'tail -n 40 storage/logs/*.log' 2>&1 | cut -c1-300)
+  msg="login: ${login: -12}"$'\n'"GET /users/me: ${me:0:300}"$'\n'"$log"
   msg="${msg//'%'/'%25'}"; msg="${msg//$'\n'/'%0A'}"; msg="${msg//$'\r'/'%0D'}"
   echo "::warning title=Toolshop API smoke check::$msg"
-fi
+}
+smoke_check || true
 
 # The UI container runs `npm install` + `ng serve` on start, which takes a few minutes.
 for i in $(seq 1 120); do
