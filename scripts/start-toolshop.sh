@@ -21,10 +21,9 @@ docker compose -f docker-compose.yml up -d --force-recreate
 echo "::endgroup::"
 
 echo "::group::Install API dependencies"
-for i in $(seq 1 30); do
-  docker compose exec -T laravel-api true 2>/dev/null && break
-  sleep 2
-done
+# The compose file's one-shot `composer` service installs dependencies into the shared volume on
+# start-up; wait for it to finish so the explicit install below doesn't race with it.
+docker compose wait composer || true
 docker compose exec -T -u root laravel-api composer install --no-dev --optimize-autoloader --ignore-platform-req=ext-ffi
 echo "::endgroup::"
 
