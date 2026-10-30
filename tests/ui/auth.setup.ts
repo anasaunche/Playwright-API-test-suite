@@ -6,31 +6,29 @@ import { AUTH_STATE_FILE, env } from '../../src/config/env';
  * need an authenticated customer start already signed in.
  */
 setup('authenticate as demo customer', async ({ page, loginPage, header }) => {
-  // The header only shows the user menu once GET /users/me succeeds – record those calls
-  // so a failure here explains itself.
-  const profileCalls: string[] = [];
+  // Record failing API calls so that a failure here explains itself in the CI log.
+  const failedCalls: string[] = [];
   page.on('response', (res) => {
-    if (new URL(res.url()).pathname.endsWith('/users/me')) profileCalls.push(String(res.status()));
+    if (res.status() >= 400)
+      failedCalls.push(`${res.status()} ${res.request().method()} ${res.url()}`);
   });
 
   await loginPage.goto();
   await loginPage.login(env.customer.email, env.customer.password);
 
-  await expect(page).toHaveURL(/\/account/);
-  await expect(page.getByTestId('page-title')).toHaveText(/my account/i);
-
   try {
+    await expect(page).toHaveURL(/\/account/);
+    await expect(page.getByTestId('page-title')).toHaveText(/my account/i);
     await expect(header.userMenu).toContainText(env.customer.fullName);
   } catch (error) {
-    const nav = await page
-      .locator('nav')
-      .first()
+    const body = await page
+      .locator('body')
       .innerText()
-      .catch(() => '<no nav>');
+      .catch(() => '<no body>');
     throw new Error(
       `${(error as Error).message}\n` +
-        `URL: ${page.url()}\n/users/me statuses: [${profileCalls.join(', ')}]\n` +
-        `Header text: ${nav.replace(/\s+/g, ' ').slice(0, 500)}`,
+        `URL: ${page.url()}\nFailed calls:\n  ${failedCalls.join('\n  ') || '(none)'}\n` +
+        `Page text: ${body.replace(/\s+/g, ' ').slice(0, 800)}`,
       { cause: error },
     );
   }
