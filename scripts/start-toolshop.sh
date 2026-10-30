@@ -10,6 +10,8 @@ trap 'echo "::error title=start-toolshop.sh::failed at line $LINENO: $BASH_COMMA
 APP_DIR="${1:-toolshop}"
 export SPRINT=sprint5
 export DISABLE_LOGGING=false
+# Use only the base compose file (skip the repo's dev override with phpMyAdmin, mailcatcher, …).
+export COMPOSE_FILE=docker-compose.yml
 
 if [ ! -d "$APP_DIR" ]; then
   git clone --depth 1 https://github.com/testsmith-io/practice-software-testing "$APP_DIR"
@@ -17,7 +19,7 @@ fi
 cd "$APP_DIR"
 
 echo "::group::Start containers"
-docker compose -f docker-compose.yml up -d --force-recreate
+docker compose up -d --force-recreate
 echo "::endgroup::"
 
 echo "::group::Install API dependencies"
@@ -25,6 +27,11 @@ echo "::group::Install API dependencies"
 # start-up; wait for it to finish so the explicit install below doesn't race with it.
 docker compose wait composer || true
 docker compose exec -T -u root laravel-api composer install --no-dev --optimize-autoloader --ignore-platform-req=ext-ffi
+# Installing as root leaves Laravel's writable dirs root-owned; PHP-FPM runs as www-data and then
+# fails on logging / file cache with HTTP 500s.
+docker compose exec -T -u root laravel-api sh -c \
+  'mkdir -p storage/logs storage/framework/cache/data storage/framework/sessions storage/framework/views bootstrap/cache \
+   && chown -R www-data:www-data storage bootstrap/cache && chmod -R ug+rwX storage bootstrap/cache'
 echo "::endgroup::"
 
 echo "::group::Wait for database"
@@ -59,7 +66,7 @@ smoke_check() {
   case "$me" in *HTTP200) echo "API smoke check passed"; return ;; esac
   local log msg
   log=$(docker compose exec -T laravel-api sh -c 'tail -n 40 storage/logs/*.log' 2>&1 | cut -c1-300)
-  msg="login: ${login: -12}"$'\n'"GET /users/me: ${me:0:300}"$'\n'"$log"
+  msg="login: ${login:0:400}"$'\n'"GET /users/me: ${me:0:300}"$'\n'"$log"
   msg="${msg//'%'/'%25'}"; msg="${msg//$'\n'/'%0A'}"; msg="${msg//$'\r'/'%0D'}"
   echo "::warning title=Toolshop API smoke check::$msg"
 }
