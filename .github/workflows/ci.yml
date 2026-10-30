@@ -67,9 +67,24 @@ jobs:
     name: UI + E2E tests
     needs: static-checks
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+    # The public site sits behind Cloudflare bot protection, which challenges headless browsers on
+    # CI runners. Browser tests therefore run against a fresh, seeded, self-hosted instance of the
+    # same app (sprint 5), built from the open-source repo at a pinned commit.
+    env:
+      BASE_URL: http://localhost:4200
+      API_URL: http://localhost:8091
+      TOOLSHOP_REF: ae7caecb811dd8952c09d997e69be7cb946ecd44
     steps:
       - uses: actions/checkout@v5
+      - name: Check out Toolshop
+        uses: actions/checkout@v5
+        with:
+          repository: testsmith-io/practice-software-testing
+          ref: ${{ env.TOOLSHOP_REF }}
+          path: toolshop
+      - name: Start Toolshop (Docker)
+        run: scripts/start-toolshop.sh toolshop
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -91,6 +106,10 @@ jobs:
         if: steps.pw-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
       - run: npx playwright test --project=chromium --project=e2e ${{ env.PW_GREP }}
+      - name: Toolshop logs on failure
+        if: failure()
+        working-directory: toolshop
+        run: docker compose logs --tail 100 laravel-api web
       - uses: actions/upload-artifact@v5
         if: ${{ !cancelled() }}
         with:
