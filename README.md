@@ -31,30 +31,31 @@ I picked it over toy apps because it has the things real products have:
 ```
 .
 ├── .github/workflows/ci.yml   # Lint → API tests ∥ UI+E2E tests, reports as artifacts, nightly run
-├── playwright.config.ts       # Projects: api · setup · chromium · e2e
+├── playwright.config.ts       # Projects: api · chromium · e2e
+├── scripts/start-toolshop.sh  # Boots a seeded, self-hosted Toolshop with Docker Compose
 ├── src/
 │   ├── api/
 │   │   ├── ToolshopApi.ts     # Typed API client (wraps APIRequestContext)
 │   │   └── schemas.ts         # Zod contract schemas for responses
 │   ├── pages/                 # Page Object Model (Header, Login, Catalog, Product, Checkout, Contact)
-│   ├── fixtures/index.ts      # Custom fixtures: page objects, anonymous + authenticated API clients
+│   ├── fixtures/index.ts      # Custom fixtures: page objects, API clients, `signedIn` option
 │   ├── data/factories.ts      # Unique test-data builders (emails, passwords, customers)
 │   └── config/env.ts          # Env-driven config with safe defaults
 └── tests/
     ├── api/                   # Pure API tests – no browser
-    ├── ui/                    # Browser tests (+ auth.setup.ts that saves a logged-in session)
+    ├── ui/                    # Browser tests
     └── e2e/                   # Checkout journey and UI ↔ API consistency checks
 ```
 
-### Test inventory (47 tests)
+### Test inventory (47 tests: 26 API · 18 UI · 3 E2E)
 
 | Suite | Spec                      | What it verifies                                                                         |
 | ----- | ------------------------- | ---------------------------------------------------------------------------------------- |
 | API   | `auth.api.spec.ts`        | Login returns a valid JWT, `/users/me` needs auth, unknown or forged tokens get 401      |
 | API   | `products.api.spec.ts`    | Pagination contract, no overlap between pages, sort, price/category filters, search, 404 |
 | API   | `cart.api.spec.ts`        | Cart lifecycle: create → add → update qty → remove → delete; quantities add up           |
-| API   | `users.api.spec.ts`       | Register → log in round trip, duplicate email (422), field validation                    |
-| UI    | `login.spec.ts`           | Sign in/out, error messages, required-field validation, reusing the saved session        |
+| API   | `users.api.spec.ts`       | Register → log in round trip, duplicate email (409), password policy, required email     |
+| UI    | `login.spec.ts`           | Sign in/out, error messages, required-field validation, signed-in account page           |
 | UI    | `catalog.spec.ts`         | Product grid, search + empty state, sort by price/name, category filter                  |
 | UI    | `product.spec.ts`         | Detail page matches API data, cart badge, quantity → line total                          |
 | UI    | `contact.spec.ts`         | Successful submission, min-length and required-field validation                          |
@@ -69,13 +70,20 @@ I picked it over toy apps because it has the things real products have:
 - **Contract testing with Zod.** Every typed API call validates the response body against a
   schema. Schemas list only the fields the suite relies on and allow extra fields, so the API
   can add fields without breaking tests, but removing or retyping a field fails with a clear diff.
-- **Log in once, reuse the session.** A `setup` project logs in through the real UI and saves
-  `storageState`. Specs that need a signed-in user reuse it. The API token is cached per worker
-  in a worker-scoped fixture.
-- **No arbitrary waits.** The catalog grid is rendered from XHR calls, so page objects wait
-  for the specific `/products?sort=…` response instead of sleeping or polling the DOM.
+- **Sign in through the API, not the UI.** The real login form is tested once in
+  `login.spec.ts`. Other specs set `test.use({ signedIn: true })`: a fixture gets a fresh JWT from
+  the API and puts it into `localStorage` before the app boots. A saved `storageState` doesn't
+  work here, because the API's tokens expire after 5 minutes and would go stale mid-run.
+- **No arbitrary waits.** The catalog grid is rendered from API calls, so page objects wait for
+  the matching response. The app sends its filters as the JSON body of an HTTP `QUERY`
+  request, so `CatalogPage` matches on the body as well as the query string.
 - **Stable locators.** The app exposes `data-test` attributes, so `testIdAttribute` is set to
   `data-test` and specs use `getByTestId()`, with role/label locators where they read better.
+- **Live API, self-hosted UI.** API tests hit the public API directly. The public website sits
+  behind Cloudflare bot protection, which shows a "security verification" page to headless
+  browsers on CI runners. So in CI, browser tests run against a fresh, seeded instance of the
+  same app (sprint 5), built from its open-source repo at a pinned commit. That also makes them
+  deterministic: no shared data, nothing left over from other users.
 - **Safe on a shared environment.** Every write uses unique, disposable data. Negative login
   tests use made-up emails, because wrong passwords on the shared demo account would trigger
   the app's account lockout and break everyone else's runs. Workers are capped in CI to stay
@@ -94,9 +102,18 @@ npm ci
 npx playwright install --with-deps chromium
 ```
 
-Optional: copy `.env.example` to `.env` to point at another environment (for example a local
-Docker instance of the Toolshop). The defaults target the public demo and its published demo
-account, so no secrets are needed.
+The defaults target the public demo and its published demo account, so no secrets are needed.
+Copy `.env.example` to `.env` to point at another environment.
+
+To run against your own instance (requires Docker), like CI does:
+
+```bash
+scripts/start-toolshop.sh
+```
+
+```bash
+BASE_URL=http://localhost:4200 API_URL=http://localhost:8091 npm test
+```
 
 ### Running tests
 
@@ -104,7 +121,7 @@ account, so no secrets are needed.
 | --------------------- | --------------------------------------- |
 | `npm test`            | Everything                              |
 | `npm run test:api`    | API tests only (no browser needed)      |
-| `npm run test:ui`     | UI tests (runs the auth setup first)    |
+| `npm run test:ui`     | UI tests                                |
 | `npm run test:e2e`    | Checkout + consistency tests            |
 | `npm run test:smoke`  | Tests tagged `@smoke` across all layers |
 | `npm run test:headed` | UI tests in a visible browser           |
@@ -119,13 +136,16 @@ Code quality: `npm run typecheck`, `npm run lint`, `npm run format:check`.
 and on demand:
 
 1. **Lint & typecheck**: `tsc`, ESLint (incl. `eslint-plugin-playwright`), Prettier.
-2. **API tests** and **UI + E2E tests** then run in parallel jobs. The browser job caches
-   Playwright binaries per version.
+2. Then two jobs run in parallel:
+   - **API tests** against the live public API.
+   - **UI + E2E tests** against a Toolshop instance started in the job with Docker Compose
+     (`scripts/start-toolshop.sh`). The job caches Playwright browsers per version and prints
+     the app's logs if it fails.
 3. HTML reports, JUnit XML, traces, screenshots and videos of failures are uploaded as
    artifacts. Failures also show up as annotations on the PR through the `github` reporter.
 
 Manual runs (**Actions → CI → Run workflow**) accept a `grep` input such as `@smoke`.
-`BASE_URL` / `API_URL` can be overridden with repository variables.
+For the API job, `BASE_URL` / `API_URL` can be overridden with repository variables.
 
 To debug a CI failure, download the `ui-report` artifact and run
 `npx playwright show-trace test-results/<test>/trace.zip`.
