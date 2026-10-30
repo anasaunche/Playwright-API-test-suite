@@ -8,7 +8,7 @@ set -euo pipefail
 
 APP_DIR="${1:-toolshop}"
 export SPRINT=sprint5
-export DISABLE_LOGGING=true
+export DISABLE_LOGGING=false
 
 if [ ! -d "$APP_DIR" ]; then
   git clone --depth 1 https://github.com/testsmith-io/practice-software-testing "$APP_DIR"
@@ -46,6 +46,19 @@ for i in $(seq 1 60); do
   curl -sf -o /dev/null http://localhost:8091/status && { echo "API is ready"; break; }
   sleep 5
 done
+
+# Smoke-check the authenticated API before handing over to the tests; surface the Laravel log
+# as a CI annotation when it is unhealthy.
+token=$(curl -sf -X POST http://localhost:8091/users/login -H 'Content-Type: application/json' \
+  --data '{"email":"customer@practicesoftwaretesting.com","password":"welcome01"}' | jq -r .access_token)
+me_status=$(curl -s -o /tmp/me.json -w '%{http_code}' -H "Authorization: Bearer $token" http://localhost:8091/users/me)
+if [ "$me_status" != "200" ]; then
+  log=$(docker compose exec -T laravel-api sh -c 'tail -n 40 storage/logs/laravel*.log' 2>&1 | cut -c1-300)
+  msg="GET /users/me returned $me_status: $(head -c 300 /tmp/me.json)"$'\n'"$log"
+  msg="${msg//'%'/'%25'}"; msg="${msg//$'\n'/'%0A'}"; msg="${msg//$'\r'/'%0D'}"
+  echo "::warning title=Toolshop API smoke check::$msg"
+fi
+
 # The UI container runs `npm install` + `ng serve` on start, which takes a few minutes.
 for i in $(seq 1 120); do
   if [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:4200)" = "200" ]; then
