@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # The target is a live public demo that is redeployed independently – run nightly to catch drift.
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      grep:
+        description: 'Only run tests matching this tag/title (e.g. @smoke)'
+        required: false
+        default: ''
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: true
+  BASE_URL: ${{ vars.BASE_URL || 'https://practicesoftwaretesting.com' }}
+  API_URL: ${{ vars.API_URL || 'https://api.practicesoftwaretesting.com' }}
+  PW_GREP: ${{ github.event.inputs.grep && format('--grep "{0}"', github.event.inputs.grep) || '' }}
+
+jobs:
+  static-checks:
+    name: Lint & typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+
+  api-tests:
+    name: API tests
+    needs: static-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # API tests need no browser binaries.
+      - run: npx playwright test --project=api ${{ env.PW_GREP }}
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: api-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+
+  ui-tests:
+    name: UI + E2E tests
+    needs: static-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "version=$(npx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - name: Install Chromium
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install system deps only
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - run: npx playwright test --project=chromium --project=e2e ${{ env.PW_GREP }}
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: ui-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
