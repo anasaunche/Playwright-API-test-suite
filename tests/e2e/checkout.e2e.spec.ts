@@ -1,10 +1,12 @@
 import { test, expect } from '../../src/fixtures';
 
 /**
- * Full purchase journey as a signed-in customer (storage state from the setup project).
+ * Full purchase journey as a signed-in customer.
  * The cart lives in sessionStorage, so every test starts with an empty cart.
  */
 test.describe('Checkout', { tag: ['@e2e', '@smoke'] }, () => {
+  test.use({ signedIn: true });
+
   test('signed-in customer can buy a product', async ({
     api,
     productPage,

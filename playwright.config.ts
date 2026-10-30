@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
-import { AUTH_STATE_FILE, env } from './src/config/env';
+import { env } from './src/config/env';
 
 const isCI = !!process.env.CI;
 
@@ -36,22 +36,14 @@ export default defineConfig({
       use: { baseURL: env.apiUrl },
     },
     {
-      name: 'setup',
-      testDir: './tests/ui',
-      testMatch: /.*\.setup\.ts/,
-      use: { ...devices['Desktop Chrome'] },
-    },
-    {
       name: 'chromium',
       testDir: './tests/ui',
-      dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'e2e',
       testDir: './tests/e2e',
-      dependencies: ['setup'],
-      use: { ...devices['Desktop Chrome'], storageState: AUTH_STATE_FILE },
+      use: { ...devices['Desktop Chrome'] },
     },
   ],
 });

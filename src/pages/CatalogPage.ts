@@ -31,31 +31,43 @@ export class CatalogPage {
   }
 
   /**
-   * The grid is rendered from XHR calls to the API; waiting on the response (instead of
-   * arbitrary timeouts) keeps the tests deterministic.
+   * The grid is rendered from API calls; waiting on the response (instead of arbitrary timeouts)
+   * keeps the tests deterministic. The app sends its filter criteria as the JSON body of an HTTP
+   * `QUERY` request, so criteria are read from the body as well as the query string.
    */
-  waitForProducts(predicate: (url: URL) => boolean = () => true): Promise<Response> {
+  waitForProducts(
+    predicate: (criteria: Record<string, string>) => boolean = () => true,
+  ): Promise<Response> {
     return this.page.waitForResponse((res) => {
+      const req = res.request();
       const url = new URL(res.url());
-      return /\/products(\/search)?$/.test(url.pathname) && res.ok() && predicate(url);
+      if (req.method() === 'OPTIONS' || !res.ok()) return false;
+      if (!/\/products(\/search)?$/.test(url.pathname)) return false;
+      let body: Record<string, string> = {};
+      try {
+        body = req.postDataJSON() ?? {};
+      } catch {
+        // not a JSON body
+      }
+      return predicate({ ...Object.fromEntries(url.searchParams), ...body });
     });
   }
 
   async search(term: string) {
-    const results = this.waitForProducts((url) => url.searchParams.get('q') === term);
+    const results = this.waitForProducts((c) => c.q === term);
     await this.searchInput.fill(term);
     await this.searchSubmit.click();
     await results;
   }
 
   async sortBy(option: SortOption) {
-    const sorted = this.waitForProducts((url) => url.searchParams.get('sort') === option);
+    const sorted = this.waitForProducts((c) => c.sort === option);
     await this.sortSelect.selectOption(option);
     await sorted;
   }
 
   async filterByCategory(name: string) {
-    const filtered = this.waitForProducts((url) => url.searchParams.has('by_category'));
+    const filtered = this.waitForProducts((c) => !!c.by_category);
     await this.page.getByLabel(name, { exact: true }).check();
     await filtered;
   }

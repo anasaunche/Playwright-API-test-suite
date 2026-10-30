@@ -39,6 +39,10 @@ export class ToolshopApi {
     private token?: string,
   ) {}
 
+  get bearerToken(): string | undefined {
+    return this.token;
+  }
+
   get authHeaders(): Record<string, string> {
     return this.token ? { Authorization: `Bearer ${this.token}` } : {};
   }

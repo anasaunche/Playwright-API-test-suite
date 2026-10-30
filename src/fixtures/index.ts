@@ -1,12 +1,21 @@
 import { test as base, expect, request as playwrightRequest } from '@playwright/test';
 import { ToolshopApi } from '../api/ToolshopApi';
-import { env } from '../config/env';
+import { AUTH_TOKEN_STORAGE_KEY, env } from '../config/env';
 import { CatalogPage } from '../pages/CatalogPage';
 import { CheckoutPage } from '../pages/CheckoutPage';
 import { ContactPage } from '../pages/ContactPage';
 import { Header } from '../pages/Header';
 import { LoginPage } from '../pages/LoginPage';
 import { ProductPage } from '../pages/ProductPage';
+
+type TestOptions = {
+  /**
+   * Start the test signed in as the demo customer. A fresh API token is injected into
+   * localStorage before the app boots: faster than a UI login, and immune to the API's
+   * short (5 min) token lifetime that would make a saved storage state go stale.
+   */
+  signedIn: boolean;
+};
 
 type TestFixtures = {
   /** Anonymous API client. */
@@ -25,13 +34,15 @@ type WorkerFixtures = {
   customerToken: string;
 };
 
-export const test = base.extend<TestFixtures, WorkerFixtures>({
+export const test = base.extend<TestOptions & TestFixtures, WorkerFixtures>({
+  signedIn: [false, { option: true }],
+
   // Logging in once per worker keeps the suite fast and gentle on the demo's rate limits.
   customerToken: [
     async ({}, use) => {
       const ctx = await playwrightRequest.newContext({ baseURL: env.apiUrl });
       const api = await new ToolshopApi(ctx).loginAs(env.customer.email, env.customer.password);
-      await use(api.authHeaders.Authorization!.replace('Bearer ', ''));
+      await use(api.bearerToken!);
       await ctx.dispose();
     },
     { scope: 'worker' },
@@ -49,6 +60,17 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 
   customerApi: async ({ api, customerToken }, use) => {
     await use(api.withToken(customerToken));
+  },
+
+  context: async ({ context, signedIn, api }, use) => {
+    if (signedIn) {
+      const customer = await api.loginAs(env.customer.email, env.customer.password);
+      await context.addInitScript(([key, token]) => window.localStorage.setItem(key, token), [
+        AUTH_TOKEN_STORAGE_KEY,
+        customer.bearerToken!,
+      ] as const);
+    }
+    await use(context);
   },
 
   header: async ({ page }, use) => use(new Header(page)),

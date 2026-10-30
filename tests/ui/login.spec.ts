@@ -1,5 +1,5 @@
 import { test, expect } from '../../src/fixtures';
-import { AUTH_STATE_FILE, env } from '../../src/config/env';
+import { env } from '../../src/config/env';
 import { uniqueEmail } from '../../src/data/factories';
 
 test.describe('Login', { tag: '@ui' }, () => {
@@ -47,9 +47,9 @@ test.describe('Login', { tag: '@ui' }, () => {
 });
 
 test.describe('Authenticated session', { tag: '@ui' }, () => {
-  test.use({ storageState: AUTH_STATE_FILE });
+  test.use({ signedIn: true });
 
-  test('account page is reachable without logging in again', async ({ page, header }) => {
+  test('signed-in customer can open their account page', async ({ page, header }) => {
     await page.goto('/account');
 
     await expect(page.getByTestId('page-title')).toHaveText(/my account/i);

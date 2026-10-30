@@ -10,4 +10,5 @@ export const env = {
   },
 } as const;
 
-export const AUTH_STATE_FILE = 'playwright/.auth/customer.json';
+/** localStorage key under which the Angular app keeps its JWT. */
+export const AUTH_TOKEN_STORAGE_KEY = 'auth-token';
