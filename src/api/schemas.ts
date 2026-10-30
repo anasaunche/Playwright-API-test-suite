@@ -20,6 +20,9 @@ export const CategorySchema = z.object({
   slug: z.string().min(1),
 });
 
+// Products embed a slimmer category object (no slug in search results).
+const ProductCategorySchema = CategorySchema.partial({ slug: true });
+
 export const ProductSchema = z.object({
   id: Id,
   name: z.string().min(1),
@@ -29,7 +32,7 @@ export const ProductSchema = z.object({
   is_rental: z.boolean(),
   is_location_offer: z.boolean().optional(),
   brand: BrandSchema.optional(),
-  category: CategorySchema.optional(),
+  category: ProductCategorySchema.optional(),
 });
 
 export const paginated = <T extends z.ZodTypeAny>(item: T) =>

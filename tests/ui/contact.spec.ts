@@ -4,7 +4,7 @@ const validMessage = {
   firstName: 'Ada',
   lastName: 'Lovelace',
   email: 'ada.lovelace@example.com',
-  subject: 'Customer service',
+  subject: 'customer-service' as const,
   message:
     'Hello! This is an automated Playwright test message. Please ignore it – it is only used to verify the contact form.',
 };

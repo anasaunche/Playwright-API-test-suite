@@ -1,11 +1,12 @@
 import { Locator, Page } from '@playwright/test';
 
 export type BillingAddress = {
+  country: string;
+  postalCode: string;
+  houseNumber: string;
   street: string;
   city: string;
   state: string;
-  country: string;
-  postalCode: string;
 };
 
 /** Multi-step checkout wizard: cart → sign in → billing address → payment. */
@@ -46,28 +47,21 @@ export class CheckoutPage {
   }
 
   async fillBillingAddress(address: BillingAddress) {
+    // Country + postcode + house number trigger an address lookup that patches street/city/state,
+    // so fill those first and let the lookup settle before typing the remaining fields.
+    await this.page.getByTestId('country').selectOption({ label: address.country });
+    await this.page.getByTestId('postal_code').fill(address.postalCode);
+    await this.page.getByTestId('house_number').fill(address.houseNumber);
+    await this.page.getByTestId('postcode-lookup-loading').waitFor({ state: 'hidden' });
     await this.page.getByTestId('street').fill(address.street);
     await this.page.getByTestId('city').fill(address.city);
     await this.page.getByTestId('state').fill(address.state);
-    await this.fillCountry(address.country);
-    // Field was renamed from "postcode" to "postal_code" between app versions.
-    await this.page
-      .getByTestId('postal_code')
-      .or(this.page.getByTestId('postcode'))
-      .fill(address.postalCode);
   }
 
-  private async fillCountry(country: string) {
-    const field = this.page.getByTestId('country');
-    const tag = await field.evaluate((el) => el.tagName.toLowerCase());
-    if (tag === 'select') {
-      await field.selectOption({ label: country });
-    } else {
-      await field.fill(country);
-    }
-  }
-
-  async payWith(method: string) {
+  async payWith(
+    method:
+      'bank-transfer' | 'cash-on-delivery' | 'credit-card' | 'buy-now-pay-later' | 'gift-card',
+  ) {
     await this.paymentMethod.selectOption(method);
   }
 }

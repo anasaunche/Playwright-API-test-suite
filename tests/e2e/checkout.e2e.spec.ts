@@ -33,18 +33,19 @@ test.describe('Checkout', { tag: ['@e2e', '@smoke'] }, () => {
 
     await test.step('billing address', async () => {
       await checkoutPage.fillBillingAddress({
-        street: 'Teststraat 1',
-        city: 'Utrecht',
-        state: 'Utrecht',
         country: 'Netherlands',
-        postalCode: '3511AA',
+        postalCode: '1012JS',
+        houseNumber: '1',
+        street: 'Dam',
+        city: 'Amsterdam',
+        state: 'Noord-Holland',
       });
       await expect(checkoutPage.proceedFromAddress).toBeEnabled();
       await checkoutPage.proceedFromAddress.click();
     });
 
     await test.step('pay and confirm', async () => {
-      await checkoutPage.payWith('Cash on Delivery');
+      await checkoutPage.payWith('cash-on-delivery');
       await checkoutPage.confirm.click();
       await expect(checkoutPage.paymentSuccess).toBeVisible();
 

@@ -4,7 +4,8 @@ export type ContactMessage = {
   firstName: string;
   lastName: string;
   email: string;
-  subject: string;
+  subject:
+    'customer-service' | 'webmaster' | 'return' | 'payments' | 'warranty' | 'status-of-order';
   message: string;
 };
 
@@ -25,7 +26,7 @@ export class ContactPage {
     await this.page.getByTestId('first-name').fill(msg.firstName);
     await this.page.getByTestId('last-name').fill(msg.lastName);
     await this.page.getByTestId('email').fill(msg.email);
-    await this.page.getByTestId('subject').selectOption({ label: msg.subject });
+    await this.page.getByTestId('subject').selectOption(msg.subject);
     await this.page.getByTestId('message').fill(msg.message);
   }
 

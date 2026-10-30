@@ -21,7 +21,7 @@ export class CatalogPage {
     this.productCards = page.locator('a.card[data-test^="product-"]');
     this.productNames = page.getByTestId('product-name');
     this.productPrices = page.getByTestId('product-price');
-    this.noResults = page.getByText('There are no products found.');
+    this.noResults = page.getByTestId('no-results');
   }
 
   async goto() {
