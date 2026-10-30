@@ -1,7 +1,8 @@
 import { Locator, Page } from '@playwright/test';
 
 export type BillingAddress = {
-  country: string;
+  /** ISO 3166-1 alpha-2 code, e.g. "NL" (the option value; labels are verbose). */
+  countryCode: string;
   postalCode: string;
   houseNumber: string;
   street: string;
@@ -49,7 +50,7 @@ export class CheckoutPage {
   async fillBillingAddress(address: BillingAddress) {
     // Country + postcode + house number trigger an address lookup that patches street/city/state,
     // so fill those first and let the lookup settle before typing the remaining fields.
-    await this.page.getByTestId('country').selectOption({ label: address.country });
+    await this.page.getByTestId('country').selectOption(address.countryCode);
     await this.page.getByTestId('postal_code').fill(address.postalCode);
     await this.page.getByTestId('house_number').fill(address.houseNumber);
     await this.page.getByTestId('postcode-lookup-loading').waitFor({ state: 'hidden' });

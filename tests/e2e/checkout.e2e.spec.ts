@@ -35,7 +35,7 @@ test.describe('Checkout', { tag: ['@e2e', '@smoke'] }, () => {
 
     await test.step('billing address', async () => {
       await checkoutPage.fillBillingAddress({
-        country: 'Netherlands',
+        countryCode: 'NL',
         postalCode: '1012JS',
         houseNumber: '1',
         street: 'Dam',
